@@ -1,0 +1,6 @@
+mlx-lm
+fastapi
+uvicorn
+pyspark
+confluent-kafka
+elasticsearch
