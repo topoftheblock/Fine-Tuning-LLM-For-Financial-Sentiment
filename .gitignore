@@ -1,0 +1,15 @@
+# Ignore Model Weights and Adapters (Too large for GitHub)
+fused-finance-model/
+adapters/
+*.safetensors
+
+# Ignore Python Caches
+__pycache__/
+*.py[cod]
+
+# Ignore Spark Checkpoints
+/tmp/
+spark_checkpoints/
+
+# macOS Junk
+.DS_Store
