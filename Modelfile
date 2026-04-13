@@ -1,0 +1,11 @@
+# This points to the final converted gguf file
+FROM ./my-qwen-ft.gguf
+
+# This sets the Qwen ChatML template format so Ollama knows how to talk to it
+TEMPLATE """<|im_start|>user
+{{ .Prompt }}<|im_end|>
+<|im_start|>assistant
+"""
+
+# Set the system message (optional, adjust to your use case)
+SYSTEM """You are a financial AI assistant. Extract the ticker and sentiment score, outputting strictly in JSON."""
