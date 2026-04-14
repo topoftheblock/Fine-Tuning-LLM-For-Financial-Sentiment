@@ -1,7 +1,8 @@
 import json
 import os
 from openai import OpenAI
-
+from dotenv import load_dotenv # <-- NEW: Import dotenv
+load_dotenv()
 # Initialize OpenAI Client (Ensure your OPENAI_API_KEY is set in your terminal)
 client = OpenAI()
 

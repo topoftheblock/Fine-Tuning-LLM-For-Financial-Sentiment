@@ -4,3 +4,4 @@ uvicorn
 pyspark
 confluent-kafka
 elasticsearch
+python-dotenv

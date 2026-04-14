@@ -1,7 +1,12 @@
 # Ignore Model Weights and Adapters (Too large for GitHub)
 fused-finance-model/
 adapters/
+qwen_adapters/
 *.safetensors
+*.gguf
+
+# Ignore API Keys and Secrets
+.env
 
 # Ignore Python Caches
 __pycache__/
