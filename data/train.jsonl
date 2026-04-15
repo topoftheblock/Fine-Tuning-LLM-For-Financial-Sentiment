@@ -1,3 +1,0 @@
-{"text": "<|im_start|>user\nWhat is the sentiment of $AAPL?<|im_end|>\n<|im_start|>assistant\n{\"ticker\": \"AAPL\", \"sentiment\": 0.8}<|im_end|>"}
-{"text": "<|im_start|>user\n$TSLA is looking terrible today.<|im_end|>\n<|im_start|>assistant\n{\"ticker\": \"TSLA\", \"sentiment\": -0.9}<|im_end|>"}
-{"text": "<|im_start|>user\n$NVDA just announced a massive stock split and record earnings!<|im_end|>\n<|im_start|>assistant\n{\"ticker\": \"NVDA\", \"sentiment\": 1.0}<|im_end|>"}

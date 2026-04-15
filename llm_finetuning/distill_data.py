@@ -1,60 +1,85 @@
 import json
 import os
+import time
 from openai import OpenAI
-from dotenv import load_dotenv # <-- NEW: Import dotenv
+from dotenv import load_dotenv
+from datasets import load_dataset
+
+# --- 1. Setup & Authentication ---
 load_dotenv()
-# Initialize OpenAI Client (Ensure your OPENAI_API_KEY is set in your terminal)
 client = OpenAI()
 
-# Simulated raw data (In reality, load this from a CSV or Kafka dump)
-raw_unlabelled_tweets = [
-    "Inflation printed at 2%, paving the way for aggressive rate cuts. Bullish for $SPY.",
-    "CEO of $TSLA just sold another 5 billion in stock to fund his other companies.",
-    "The new regulatory probe into the banking sector looks like a nothing-burger."
-]
+# --- 2. Configuration ---
+# Toggle these variables depending on whether you are generating 
+# your Training set or your Validation set!
 
-distilled_dataset = []
+# For Training:   split="validation", TARGET_SAMPLES=500, output="train.jsonl"
+# For Validation: split="train",      TARGET_SAMPLES=100, output="valid.jsonl"
 
-print("🎓 Starting Teacher-Student Distillation using GPT-4o-mini...")
+DATA_SPLIT = "validation"  # Hugging Face dataset split to read from
+TARGET_SAMPLES = 500       # How many rows to generate
+OUTPUT_FILE = "./data/processed/train.jsonl" # Where to save the output
 
-for tweet in raw_unlabelled_tweets:
-    # 1. The Teacher Prompt
-    # We explicitly tell GPT-4o exactly how to act and format the output
-    system_prompt = """You are an expert Wall Street quantitative analyst. 
-    Read the financial text and output STRICTLY valid JSON with no markdown formatting.
-    Format: {"ticker": "TICKER", "sentiment": [-1.0 to 1.0], "reasoning": "brief explanation"}"""
-    
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": tweet}
-            ],
-            temperature=0.0 # Deterministic output
-        )
+# --- 3. Download Raw Data ---
+print(f"Fetching raw financial tweets from Hugging Face (Split: '{DATA_SPLIT}')...")
+dataset = load_dataset("zeroshot/twitter-financial-news-sentiment", split=DATA_SPLIT)
+raw_texts = dataset['text'][:TARGET_SAMPLES]
+
+# --- 4. Prepare the Output Directory ---
+# Using './' ensures it stays inside your project folder!
+os.makedirs("./data/processed", exist_ok=True)
+
+print(f"🎓 Starting Teacher-Student Distillation on {TARGET_SAMPLES} samples...")
+print(f" Saving progress in real-time to {OUTPUT_FILE}")
+
+# Open the file in 'append' mode ('a'). 
+# This prevents data loss if the script is interrupted or API times out.
+with open(OUTPUT_FILE, "a") as f:
+    for i, text in enumerate(raw_texts):
         
-        teacher_json = json.loads(response.choices[0].message.content.strip())
+        # The Teacher Prompt (Telling GPT-4o-mini exactly how to behave)
+        system_prompt = """You are an expert Wall Street quantitative analyst. 
+        Read the financial text and output STRICTLY valid JSON with no markdown formatting.
+        Format: {"ticker": "TICKER", "sentiment": [-1.0 to 1.0], "reasoning": "brief explanation"}"""
         
-        # 2. Format it for the Student (Llama-3 on MLX)
-        student_prompt = (
-            "<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n"
-            "Analyze the following text, extract the ticker, determine the sentiment "
-            "(-1.0 to 1.0), and provide a brief reasoning. Output strictly in JSON format.\n\n"
-            f"Input: {tweet}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            f"{json.dumps(teacher_json)}<|eot_id|>"
-        )
-        
-        distilled_dataset.append({"text": student_prompt})
-        print(f"✅ Distilled: {tweet[:40]}... -> {teacher_json['sentiment']}")
-        
-    except Exception as e:
-        print(f"❌ Failed to distill tweet: {e}")
+        try:
+            # 1. Ask the Teacher (GPT-4o-mini)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text}
+                ],
+                temperature=0.0 # Strict deterministic output
+            )
+            
+            # Parse the teacher's JSON response
+            teacher_json = json.loads(response.choices[0].message.content.strip())
+            
+            # 2. Format for the Student (Qwen ChatML)
+            qwen_instruction = (
+                "Analyze the following text, extract the ticker, determine the sentiment "
+                "(-1.0 to 1.0), and provide a brief reasoning. Output strictly in JSON format."
+            )
+            
+            student_prompt = (
+                f"<|im_start|>system\n{qwen_instruction}<|im_end|>\n"
+                f"<|im_start|>user\nInput: {text}<|im_end|>\n"
+                f"<|im_start|>assistant\n{json.dumps(teacher_json)}<|im_end|>\n"
+            )
+            
+            # 3. Save to disk immediately
+            f.write(json.dumps({"text": student_prompt}) + "\n")
+            
+            # Print a status update every 50 tweets
+            if (i + 1) % 50 == 0:
+                print(f"Processed {i + 1}/{TARGET_SAMPLES} tweets...")
+                
+            # A tiny sleep to prevent hitting OpenAI API rate limits
+            time.sleep(0.1)
+            
+        except Exception as e:
+            # If a tweet has weird formatting or GPT breaks JSON, skip it gracefully
+            print(f"Skipping row {i} due to error: {e}")
 
-# 3. Save the new high-quality synthetic data
-os.makedirs("../data/processed", exist_ok=True)
-with open("../data/processed/synthetic_train.jsonl", "w") as f:
-    for item in distilled_dataset:
-        f.write(json.dumps(item) + "\n")
-
-print("\n🎉 Distillation complete! Saved to data/processed/synthetic_train.jsonl")
+print(f"\n🎉 Distillation complete! Saved to {OUTPUT_FILE}")

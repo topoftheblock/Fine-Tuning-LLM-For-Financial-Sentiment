@@ -1,2 +1,0 @@
-{"text": "<|im_start|>user\nI think $NVDA is overvalued at this point.<|im_end|>\n<|im_start|>assistant\n{\"ticker\": \"NVDA\", \"sentiment\": -0.5}<|im_end|>"}
-{"text": "<|im_start|>user\n$GOOG is making huge moves in AI today.<|im_end|>\n<|im_start|>assistant\n{\"ticker\": \"GOOG\", \"sentiment\": 0.9}<|im_end|>"}

@@ -6,3 +6,4 @@ confluent-kafka
 elasticsearch
 python-dotenv
 wandb
+datasets
