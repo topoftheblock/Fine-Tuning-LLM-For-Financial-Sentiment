@@ -1,5 +1,5 @@
 # Real-Time Financial Sentiment Engine
-### Fine-Tuned Qwen on Apple Silicon · Apache Kafka · PySpark · Elasticsearch
+### Fine-Tuned Qwen-2.5 0.5B on Apple Silicon · Apache Kafka · PySpark · Elasticsearch
 
 An end-to-end Big Data pipeline and Applied AI project that ingests real-time financial social media data, analyzes sentiment using a custom fine-tuned LLM running natively on Apple Silicon (MLX), and visualizes structured trading signals on a live dashboard.
 
@@ -15,7 +15,7 @@ Using massive, closed-source models (like GPT-4o) via API to process millions of
 
 **The Solution: Teacher-Student Knowledge Distillation**
 
-A large "Teacher" model (GPT-4o) generates a high-quality, perfectly formatted dataset of financial reasoning. Apple's **MLX** framework is then used to fine-tune a small, blazingly fast "Student" model (**Qwen 3B/4B**) on an M-series Mac.
+A large "Teacher" model (`gpt-4o-mini`) generates a high-quality, perfectly formatted dataset of financial reasoning. Apple's **MLX** framework is then used to fine-tune a small, blazingly fast "Student" model (**Qwen-2.5 0.5B Instruct**) on an M-series Mac.
 
 The result is a **local, highly specialized financial AI** that integrates directly into an Apache Kafka and PySpark pipeline — outputting deterministic JSON trading signals at zero recurring API cost.
 
@@ -63,10 +63,56 @@ Social Media Posts
 
 ---
 
+## Model Training & Fine-Tuning
+
+To optimize for local edge-device inference, this project uses the highly efficient **Qwen-2.5 0.5B Instruct** model, fine-tuned locally using Apple's MLX framework and the Unified Memory architecture of the Apple M4 chip.
+
+### Teacher-Student Distillation Dataset
+
+Because a 500-million parameter model lacks deep pre-trained knowledge of Wall Street slang, a **Teacher-Student Distillation** approach was used:
+
+- **The Teacher:** `gpt-4o-mini` analyzes raw financial tweets and generates perfectly formatted JSON responses containing the ticker, sentiment score (-1.0 to 1.0), and financial reasoning.
+- **The Data Split:** The generated data is formatted into Qwen's native ChatML structure and strictly split into a **500-row Training Set** and a **100-row Validation Set** (unseen data) to accurately measure generalization.
+
+### Training Hardware & Performance
+
+Training runs completely locally on an Apple M4 chip. MLX's highly optimized Metal performance yields impressive speeds:
+
+| Metric | Value |
+|---|---|
+| **Processing Speed** | ~900–1,000 tokens/second |
+| **Peak Unified Memory Usage** | 4.85 GB |
+| **Experiment Tracking** | Weights & Biases (W&B) — real-time loss curves |
+
+### Hyperparameters (LoRA)
+
+Low-Rank Adaptation (LoRA) is used to efficiently update model weights without catastrophic forgetting:
+
+| Hyperparameter | Value |
+|---|---|
+| **Batch Size** | 8 |
+| **Iterations** | 1,000 |
+| **LoRA Layers** | 16 |
+| **Learning Rate** | 1e-5 |
+
+The learning rate is kept deliberately low to preserve the model's baseline English comprehension.
+
+### Training Dynamics & Overfitting Prevention
+
+During the 1,000-iteration run, training loss dropped to **0.087**, indicating the model successfully learned strict JSON formatting and financial logic.
+
+However, W&B validation monitoring revealed the model's **peak generalization** occurred at **Iteration 200** (Validation Loss: **1.243**). After this point, validation loss began to slowly rise — a classic sign of overfitting, where the model starts memorizing the 500 training examples rather than learning transferable concepts.
+
+**The Solution:** Rather than using the final Iteration 1,000 weights, the pipeline fuses the LoRA adapters from the **Iteration 200 checkpoint**, ensuring the production model is optimized for unseen financial data.
+
+
+![training](loss_curve.png)
+---
+
 ## Prerequisites
 
 - **Hardware:** Apple Silicon Mac (M1/M2/M3/M4) — required for MLX training
-- **Docker:** Docker Desktop installed for the Kafka and Elastic stack
+- **Docker:** Docker Desktop for the Kafka and Elastic stack
 - **API Keys:** An OpenAI API key *(only needed for the dataset distillation phase)*
 - **Python Dependencies:**
 
@@ -89,17 +135,15 @@ OPENAI_API_KEY=sk-...
 Run the Teacher-Student distillation pipeline:
 
 ```bash
-# Generate synthetic training data via GPT-4o
+# Generate synthetic training data via gpt-4o-mini
 python llm_finetuning/distill_data.py
 
 # Fine-tune with LoRA adapters on Apple Silicon
 ./llm_finetuning/train_mlx.sh
 
-# Fuse adapters into the base model
+# Fuse adapters from the Iteration 200 checkpoint into the base model
 ./llm_finetuning/fuse_model.sh
 ```
-
----
 
 ### 2. Start the Big Data Infrastructure
 
@@ -114,8 +158,6 @@ This spins up:
 - **Elasticsearch** on port `9200`
 - **Kibana** on port `5601`
 
----
-
 ### 3. Start the AI Inference Server
 
 ```bash
@@ -129,8 +171,6 @@ The server will be available at `http://localhost:8000`. Test it manually:
 python inference/manual_test.py
 ```
 
----
-
 ### 4. Launch the Spark Streaming Job
 
 ```bash
@@ -139,8 +179,6 @@ python processing/spark_streaming.py
 
 This job automatically downloads the required Kafka and Elasticsearch connectors on first run.
 
----
-
 ### 5. Start the Data Firehose
 
 ```bash
@@ -148,8 +186,6 @@ python ingestion/reddit_producer.py
 ```
 
 This begins streaming simulated financial posts into the Kafka topic.
-
----
 
 ### 6. View the Live Dashboard
 
@@ -167,14 +203,14 @@ Open Kibana at **http://localhost:5601** and create an index pattern for `financ
 .
 ├── .env                         # API keys (git-ignored)
 ├── data/
-│   ├── train.jsonl              # ChatML-formatted training data
-│   └── valid.jsonl              # Validation data
+│   ├── train.jsonl              # ChatML-formatted training data (500 rows)
+│   └── valid.jsonl              # Validation data (100 rows, unseen)
 │
 ├── llm_finetuning/              # The AI Lab
-│   ├── distill_data.py          # Teacher-Student data generation (GPT-4o)
+│   ├── distill_data.py          # Teacher-Student data generation (gpt-4o-mini)
 │   ├── pack_dataset.py          # Token-packing optimization
 │   ├── train_mlx.sh             # MLX LoRA training script
-│   └── fuse_model.sh            # Merges adapters into base model
+│   └── fuse_model.sh            # Merges Iter-200 checkpoint adapters into base model
 │
 ├── ingestion/                   # The Firehose
 │   └── reddit_producer.py       # Kafka producer simulating WSB-style posts
@@ -208,6 +244,8 @@ This iterative loop ensures the fine-tuned model becomes progressively more robu
 
 | Decision | Rationale |
 |---|---|
+| **Qwen-2.5 0.5B (not 3B/4B)** | Optimized for edge-device inference; fits comfortably in 4.85 GB of unified memory |
+| **Iter-200 checkpoint fusion** | Targets peak validation performance, avoiding overfitting on the 500-example training set |
 | **Local MLX inference** | Zero recurring API cost; sub-100ms latency on Apple Silicon |
 | **LoRA fine-tuning** | Efficient adaptation without full retraining; preserves base model weights |
 | **Strict JSON output** | Enables deterministic Spark UDF parsing and downstream signal processing |

@@ -2,7 +2,7 @@ import json
 from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
 
-print("🔍 Loading V1 Model to mine hard negatives...")
+print(" Loading V1 Model to mine hard negatives...")
 model, tokenizer = load("../inference/fused-finance-model")
 strict_sampler = make_sampler(temp=0.0)
 

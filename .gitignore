@@ -1,6 +1,7 @@
 # Ignore Model Weights and Adapters (Too large for GitHub)
 fused-finance-model/
 adapters/
+fused-qwen-finance/
 qwen_adapters/
 *.safetensors
 *.gguf
