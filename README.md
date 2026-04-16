@@ -254,6 +254,3 @@ This iterative loop ensures the fine-tuned model becomes progressively more robu
 
 ---
 
-## License
-
-MIT License — see `LICENSE` for details.
