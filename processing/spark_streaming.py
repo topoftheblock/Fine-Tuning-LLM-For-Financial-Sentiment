@@ -3,11 +3,15 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, from_json, regexp_extract, udf, from_unixtime
 from pyspark.sql.types import StructType, StructField, StringType, LongType, FloatType
 
+# UPDATED: Added spark.jars.excludes to prevent the Elasticsearch connector
+# from pulling in conflicting Spark 3.3.x dependencies that break PySpark 3.5.0
 spark = SparkSession.builder \
     .appName("FinancialSignalFilter") \
     .config("spark.jars.packages", 
             "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
             "org.elasticsearch:elasticsearch-spark-30_2.12:8.12.0") \
+    .config("spark.jars.excludes", 
+            "org.apache.spark:spark-yarn_2.12,org.apache.spark:spark-core_2.12,org.apache.spark:spark-sql_2.12,org.apache.spark:spark-catalyst_2.12") \
     .getOrCreate()
 
 spark.sparkContext.setLogLevel("WARN")

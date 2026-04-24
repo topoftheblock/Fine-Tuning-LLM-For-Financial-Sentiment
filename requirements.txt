@@ -1,7 +1,7 @@
 mlx-lm
 fastapi
 uvicorn
-pyspark
+pyspark==3.4.1
 confluent-kafka
 elasticsearch
 python-dotenv
