@@ -65,28 +65,26 @@ Social Media Posts
 
 ## Model Training & Fine-Tuning
 
-To optimize for local edge-device inference, this project uses the highly efficient **Qwen-2.5 0.5B Instruct** model, fine-tuned locally using Apple's MLX framework and the Unified Memory architecture of the Apple M4 chip.
+To optimize for local edge-device inference with zero recurring API costs, this project uses the highly efficient **Qwen-2.5 0.5B Instruct** model. It is fine-tuned locally using Apple's MLX framework, leveraging the Unified Memory architecture of the Apple M-Series chips.
 
-### Teacher-Student Distillation Dataset
+### 1. Teacher-Student Knowledge Distillation
 
-Because a 500-million parameter model lacks deep pre-trained knowledge of Wall Street slang, a **Teacher-Student Distillation** approach was used:
+Because a 500-million parameter base model lacks deep pre-trained knowledge of Wall Street slang and struggles to consistently output strict JSON, we use a **Teacher-Student Distillation** pipeline (`llm_finetuning/distill_data.py`). Here is exactly how it works in this project:
 
-- **The Teacher:** `gpt-4o-mini` analyzes raw financial tweets and generates perfectly formatted JSON responses containing the ticker, sentiment score (-1.0 to 1.0), and financial reasoning.
-- **The Data Split:** The generated data is formatted into Qwen's native ChatML structure and strictly split into a **500-row Training Set** and a **100-row Validation Set** (unseen data) to accurately measure generalization.
+- **The Raw Data:** The script pulls raw financial tweets from the Hugging Face dataset `zeroshot/twitter-financial-news-sentiment`.
+- **The Teacher (`gpt-4o-mini`):** The OpenAI API is prompted to act as an "expert Wall Street quantitative analyst." It reads the raw tweets and is forced via a temperature of `0.0` to output perfectly formatted JSON containing the extracted ticker, a sentiment score (-1.0 to 1.0), and a brief reasoning.
+- **The Student (`Qwen-2.5 0.5B`):** The Teacher's high-quality JSON responses are programmatically wrapped into Qwen's native ChatML token structure (e.g., `<|im_start|>system...<|im_end|>`).
+- **The Result:** This process generates a synthetic dataset of 500 training examples (`train.jsonl`) and 100 unseen validation examples (`valid.jsonl`). We are effectively transferring the reasoning capabilities and JSON-compliance of a massive, closed-source model into our tiny, local model.
+- **Token Packing:** To maximize MLX training efficiency, `pack_dataset.py` groups multiple ChatML conversations into dense 2,048-token blocks, preventing wasted compute on padding tokens.
 
-### Training Hardware & Performance
+### 2. LoRA (Low-Rank Adaptation) Fine-Tuning
 
-Training runs completely locally on an Apple M4 chip. MLX's highly optimized Metal performance yields impressive speeds:
+Updating all 500 million parameters of the base model would require massive VRAM and could cause "catastrophic forgetting" (where the model forgets its baseline English comprehension). Instead, we use **LoRA** via the `mlx_lm` library (`llm_finetuning/train_mlx.sh`). Here is how LoRA is applied in this pipeline:
 
-| Metric | Value |
-|---|---|
-| **Processing Speed** | ~900–1,000 tokens/second |
-| **Peak Unified Memory Usage** | 4.85 GB |
-| **Experiment Tracking** | Weights & Biases (W&B) — real-time loss curves |
-
-### Hyperparameters (LoRA)
-
-Low-Rank Adaptation (LoRA) is used to efficiently update model weights without catastrophic forgetting:
+- **Freezing the Base Model:** The original pre-trained weights of Qwen-2.5 0.5B are frozen.
+- **Injecting Adapters:** The MLX script injects small, trainable rank-decomposition matrices (adapters) into **16 layers** of the model's transformer architecture.
+- **Hardware Efficiency:** Because we are only calculating gradients for these tiny adapter layers rather than the full model, peak memory usage stays at just **4.85 GB**, allowing it to train natively on an Apple Silicon Mac.
+- **Hyperparameters:** The model trains with a batch size of 8 for 1,000 iterations using a deliberately low learning rate of `1e-5` to preserve base intelligence.
 
 | Hyperparameter | Value |
 |---|---|
@@ -95,18 +93,22 @@ Low-Rank Adaptation (LoRA) is used to efficiently update model weights without c
 | **LoRA Layers** | 16 |
 | **Learning Rate** | 1e-5 |
 
-The learning rate is kept deliberately low to preserve the model's baseline English comprehension.
+**Training Hardware & Performance**
 
-### Training Dynamics & Overfitting Prevention
+| Metric | Value |
+|---|---|
+| **Processing Speed** | ~900–1,000 tokens/second |
+| **Peak Unified Memory Usage** | 4.85 GB |
+| **Experiment Tracking** | Weights & Biases (W&B) — real-time loss curves |
 
-During the 1,000-iteration run, training loss dropped to **0.087**, indicating the model successfully learned strict JSON formatting and financial logic.
+### 3. Checkpoint Fusion & Overfitting Prevention
 
-However, W&B validation monitoring revealed the model's **peak generalization** occurred at **Iteration 200** (Validation Loss: **1.243**). After this point, validation loss began to slowly rise — a classic sign of overfitting, where the model starts memorizing the 500 training examples rather than learning transferable concepts.
+During the 1,000-iteration training run, training loss drops steadily to **0.087**. However, because our synthetic dataset is only 500 rows, Weights & Biases (W&B) validation monitoring reveals that **peak generalization on unseen data occurs at Iteration 200** (Validation Loss: **1.243**). After Iteration 200, the validation loss slowly rises — a clear indicator that the model is overfitting and memorizing the training data instead of learning transferable financial concepts.
 
-**The Solution:** Rather than using the final Iteration 1,000 weights, the pipeline fuses the LoRA adapters from the **Iteration 200 checkpoint**, ensuring the production model is optimized for unseen financial data.
+**The Solution (`llm_finetuning/fuse_model.sh`):** Rather than using the overfitted Iteration 1,000 weights, the pipeline selects the adapters generated at the **Iteration 200 checkpoint**. The fusion script mathematically matrix-multiplies these specific LoRA adapters directly back into the base Qwen weights. This results in a single, standalone executable model (`./inference/fused-qwen-finance`) that is permanently specialized for financial JSON extraction and ready to be served by the FastAPI engine at sub-100ms latency.
 
+![Training Loss Curve](loss_curve.png)
 
-![training](loss_curve.png)
 ---
 
 ## Prerequisites
@@ -251,6 +253,3 @@ This iterative loop ensures the fine-tuned model becomes progressively more robu
 | **Strict JSON output** | Enables deterministic Spark UDF parsing and downstream signal processing |
 | **KRaft Kafka** | No ZooKeeper dependency; simpler local setup |
 | **Elasticsearch sink** | Native Kibana integration for time-series dashboarding |
-
----
-
