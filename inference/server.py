@@ -1,9 +1,10 @@
 import json
+import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mlx_lm import load, generate
 
-app = FastAPI(title="M4 Financial Sentiment API (RAG-Enabled)")
+app = FastAPI(title="M4 Financial Sentiment API (CoT + Multi-Ticker)")
 
 print("Loading fused Qwen 0.5B model into M4 Unified Memory...")
 MODEL_PATH = "./fused-qwen-finance" 
@@ -15,11 +16,10 @@ class AnalysisRequest(BaseModel):
 
 @app.post("/analyze")
 def analyze_text(request: AnalysisRequest):
-    # UPDATED SYSTEM PROMPT to explicitly tell the model to use the context
     system_instruction = (
-        "Analyze the following text and its Current Market Context. "
-        "Extract the ticker, determine the sentiment (-1.0 to 1.0) by weighing the news "
-        "against the market trend, and provide a brief reasoning. Output strictly in JSON format."
+        "Analyze the following text. First, provide step-by-step reasoning inside <think>...</think> tags. "
+        "Then, extract the tickers, sentiments (-1.0 to 1.0), and reasoning for ALL companies mentioned "
+        "as a strict JSON array of objects."
     )
     
     prompt = (
@@ -29,27 +29,34 @@ def analyze_text(request: AnalysisRequest):
     )
 
     try:
+        # Increase max_tokens because CoT reasoning takes up more space!
         response_text = generate(
             model, 
             tokenizer, 
             prompt=prompt, 
-            max_tokens=150, 
+            max_tokens=300, 
             verbose=False
         )
         
-        clean_json = json.loads(response_text.strip())
+        # 1. Extract the Chain of Thought
+        think_match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
+        thought_process = think_match.group(1).strip() if think_match else "No reasoning generated."
+        
+        # 2. Extract the JSON Array
+        json_str = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
+        
+        clean_json_array = json.loads(json_str)
         
         return {
-            "ticker": clean_json.get("ticker", "UNKNOWN"),
-            "sentiment": clean_json.get("sentiment", 0.0),
-            "reasoning": clean_json.get("reasoning", "No reasoning provided.")
+            "chain_of_thought": thought_process,
+            "signals": clean_json_array
         }
 
     except json.JSONDecodeError:
         return {
-            "ticker": "UNKNOWN", 
-            "sentiment": 0.0, 
-            "reasoning": f"LLM Format Error. Raw output: {response_text}"
+            "chain_of_thought": thought_process if 'thought_process' in locals() else "Failed.",
+            "signals": [],
+            "error": f"LLM Format Error. Raw output: {json_str if 'json_str' in locals() else response_text}"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

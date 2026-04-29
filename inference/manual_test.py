@@ -1,27 +1,23 @@
 import json
+import re
 from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
 
-# --- 1. Configuration & Loading ---
-# UPDATED: Pointing to the correct fused Qwen model
 MODEL_PATH = "./fused-qwen-finance" 
 
-print(f" Loading fine-tuned model from {MODEL_PATH} into M4 Unified Memory...")
-print("Please wait, this usually takes 5-10 seconds...")
+print(f" Loading CoT fine-tuned model from {MODEL_PATH} into M4 Unified Memory...")
 try:
     model, tokenizer = load(MODEL_PATH)
     print(" Model loaded successfully!\n")
 except Exception as e:
-    print(f" Failed to load model. Did you run the fusion script? Error: {e}")
+    print(f" Failed to load model. Error: {e}")
     exit(1)
 
-# --- 2. The Strict Prompt Template ---
 def format_prompt(raw_text: str) -> str:
-    """Wraps incoming text in the exact format used during training."""
-    
     system_instruction = (
-        "Analyze the following text, extract the ticker, determine the sentiment "
-        "(-1.0 to 1.0), and provide a brief reasoning. Output strictly in JSON format."
+        "Analyze the following text. First, provide step-by-step reasoning inside <think>...</think> tags. "
+        "Then, extract the tickers, sentiments (-1.0 to 1.0), and reasoning for ALL companies mentioned "
+        "as a strict JSON array of objects."
     )
     
     prompt = (
@@ -29,55 +25,45 @@ def format_prompt(raw_text: str) -> str:
         f"<|im_start|>user\nInput: {raw_text}<|im_end|>\n"
         f"<|im_start|>assistant\n"
     )
-    
     return prompt
 
-# --- 3. Interactive Testing Loop ---
 print("="*60)
-print("📈 FINANCIAL SENTIMENT ENGINE - MANUAL OVERRIDE")
+print("📈 FINANCIAL SENTIMENT ENGINE - CoT MULTI-TICKER")
 print("Type 'exit' or 'quit' to stop.")
 print("="*60)
 
-# Create a deterministic sampler to enforce strict JSON formatting
-strict_sampler = make_sampler(temp=0.0)
+strict_sampler = make_sampler(temp=0.1)
 
 while True:
     user_input = input("\nEnter a financial tweet or headline:\n> ")
     
     if user_input.lower() in ['exit', 'quit']:
-        print("Shutting down engine...")
         break
-        
     if not user_input.strip():
         continue
         
     formatted_prompt = format_prompt(user_input)
+    print(" Analyzing (Thinking...)\n")
     
-    print(" Analyzing...")
-    
-    # Generate the response using our strict sampler
     response = generate(
-        model, 
-        tokenizer, 
-        prompt=formatted_prompt, 
-        max_tokens=150, 
-        sampler=strict_sampler,
-        verbose=False
+        model, tokenizer, prompt=formatted_prompt, max_tokens=300, sampler=strict_sampler, verbose=False
     )
     
-    # Clean up any trailing spaces the model might have added
-    raw_output = response.strip()
+    # Parse the CoT block
+    think_match = re.search(r"<think>(.*?)</think>", response, re.DOTALL)
+    if think_match:
+        print("\033[90m" + "🤔 AI THOUGHT PROCESS:" + "\033[0m") # Gray color for thoughts
+        print("\033[90m" + think_match.group(1).strip() + "\033[0m\n")
     
-    # --- 4. Validation & Output ---
+    # Parse the JSON Array
+    json_str = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL).strip()
+    
     try:
-        clean_json = json.loads(raw_output)
-        
-        print("\n SUCCESSFUL EXTRACTION:")
+        clean_json = json.loads(json_str)
+        print("📊 EXTRACTED SIGNALS:")
         print(json.dumps(clean_json, indent=4))
-        
     except json.JSONDecodeError:
-        print("\n FORMAT ERROR: Model failed to output valid JSON.")
-        print("Raw output from model:")
-        print(raw_output)
+        print("❌ FORMAT ERROR: Model failed to output valid JSON.")
+        print(json_str)
         
-    print("-" * 60) 
+    print("-" * 60)
