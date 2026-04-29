@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from mlx_lm import load, generate
 
-app = FastAPI(title="M4 Financial Sentiment API")
+app = FastAPI(title="M4 Financial Sentiment API (RAG-Enabled)")
 
 print("Loading fused Qwen 0.5B model into M4 Unified Memory...")
 MODEL_PATH = "./fused-qwen-finance" 
@@ -15,9 +15,11 @@ class AnalysisRequest(BaseModel):
 
 @app.post("/analyze")
 def analyze_text(request: AnalysisRequest):
+    # UPDATED SYSTEM PROMPT to explicitly tell the model to use the context
     system_instruction = (
-        "Analyze the following text, extract the ticker, determine the sentiment "
-        "(-1.0 to 1.0), and provide a brief reasoning. Output strictly in JSON format."
+        "Analyze the following text and its Current Market Context. "
+        "Extract the ticker, determine the sentiment (-1.0 to 1.0) by weighing the news "
+        "against the market trend, and provide a brief reasoning. Output strictly in JSON format."
     )
     
     prompt = (
