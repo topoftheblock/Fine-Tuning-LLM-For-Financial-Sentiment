@@ -1,7 +1,7 @@
 # Real-Time Financial Sentiment Engine
 ### Fine-Tuned Qwen-2.5 0.5B on Apple Silicon · Apache Kafka · PySpark · Elasticsearch
 
-An end-to-end Big Data pipeline and Applied AI project that ingests real-time financial social media data, analyzes sentiment using a custom fine-tuned LLM running natively on Apple Silicon (MLX), and visualizes structured trading signals on a live dashboard.
+An end-to-end Big Data pipeline and Applied AI project that ingests real-time financial social media data, analyzes sentiment using a custom fine-tuned LLM running natively on Apple Silicon, MLX, and visualizes structured trading signals on a live dashboard.
 
 ---
 
@@ -11,11 +11,11 @@ Financial markets move fast, and they speak their own language. Standard, genera
 
 > *"The company is bleeding cash but margins are fat."*
 
-Using massive, closed-source models (like GPT-4o) via API to process millions of live streaming posts is also incredibly slow and prohibitively expensive.
+Using massive, closed-source models, like GPT-4o, via API to process millions of live streaming posts is also incredibly slow and prohibitively expensive.
 
 **The Solution: Teacher-Student Knowledge Distillation**
 
-A large "Teacher" model (`gpt-4o-mini`) generates a high-quality, perfectly formatted dataset of financial reasoning. Apple's **MLX** framework is then used to fine-tune a small, fast "Student" model (**Qwen-2.5 0.5B Instruct**) on an M-series Mac.
+A large "Teacher" model, `gpt-4o-mini`, generates a high-quality, perfectly formatted dataset of financial reasoning. Apple's **MLX** framework is then used to fine-tune a small, fast "Student" model, **Qwen-2.5 0.5B Instruct**, on an M-series Mac.
 
 The result is a **local, highly specialized financial AI** that integrates directly into an Apache Kafka and PySpark pipeline — outputting deterministic JSON trading signals at zero recurring API cost.
 
@@ -55,7 +55,7 @@ Social Media Posts
 
 | Component | Description |
 |---|---|
-| **AI Distillation & Fine-Tuning** (`llm_finetuning/`) | Uses OpenAI's API for Teacher-Student data generation. Trains Low-Rank Adapters (LoRA) natively on Apple Unified Memory via `mlx_lm`. |
+| **AI Distillation & Fine-Tuning** (`llm_finetuning/`) | Uses OpenAI's API for Teacher-Student data generation. Trains Low-Rank Adapters natively on Apple Unified Memory via `mlx_lm`. |
 | **Data Ingestion** (`ingestion/`) | Kafka Producer that simulates live WallStreetBets-style financial posts, streaming raw JSON to `financial_raw_text`. |
 | **Stream Processing** (`processing/`) | PySpark job consuming the Kafka stream, applying regex to extract tickers, and enriching data via a Spark UDF calling the local model. |
 | **LLM Inference Server** (`inference/`) | FastAPI server hosting the fine-tuned Qwen model. Accepts raw text, returns strict JSON with ticker, sentiment score (-1.0 to 1.0), and reasoning. |
@@ -72,8 +72,8 @@ To optimize for local edge-device inference with zero recurring API costs, this 
 Because a 500-million parameter base model lacks deep pre-trained knowledge of Wall Street slang and struggles to consistently output strict JSON, we use a **Teacher-Student Distillation** pipeline (`llm_finetuning/distill_data.py`). Here is exactly how it works in this project:
 
 - **The Raw Data:** The script pulls raw financial tweets from the Hugging Face dataset `zeroshot/twitter-financial-news-sentiment`.
-- **The Teacher (`gpt-4o-mini`):** The OpenAI API is prompted to act as an "expert Wall Street quantitative analyst." It reads the raw tweets and is forced via a temperature of `0.0` to output perfectly formatted JSON containing the extracted ticker, a sentiment score (-1.0 to 1.0), and a brief reasoning.
-- **The Student (`Qwen-2.5 0.5B`):** The Teacher's high-quality JSON responses are programmatically wrapped into Qwen's native ChatML token structure (e.g., `<|im_start|>system...<|im_end|>`).
+- **The Teacher, `gpt-4o-mini`:** The OpenAI API is prompted to act as an "expert Wall Street quantitative analyst." It reads the raw tweets and is forced via a temperature of `0.0` to output perfectly formatted JSON containing the extracted ticker, a sentiment score (-1.0 to 1.0), and a brief reasoning.
+- **The Student, `Qwen-2.5 0.5B`:** The Teacher's high-quality JSON responses are programmatically wrapped into Qwen's native ChatML token structure (e.g., `<|im_start|>system...<|im_end|>`).
 - **The Result:** This process generates a synthetic dataset of 500 training examples (`train.jsonl`) and 100 unseen validation examples (`valid.jsonl`). We are effectively transferring the reasoning capabilities and JSON-compliance of a massive, closed-source model into our tiny, local model.
 - **Token Packing:** To maximize MLX training efficiency, `pack_dataset.py` groups multiple ChatML conversations into dense 2,048-token blocks, preventing wasted compute on padding tokens.
 
@@ -82,7 +82,7 @@ Because a 500-million parameter base model lacks deep pre-trained knowledge of W
 Updating all 500 million parameters of the base model would require massive VRAM and could cause "catastrophic forgetting" (where the model forgets its baseline English comprehension). Instead, we use **LoRA** via the `mlx_lm` library (`llm_finetuning/train_mlx.sh`). Here is how LoRA is applied in this pipeline:
 
 - **Freezing the Base Model:** The original pre-trained weights of Qwen-2.5 0.5B are frozen.
-- **Injecting Adapters:** The MLX script injects small, trainable rank-decomposition matrices (adapters) into **16 layers** of the model's transformer architecture.
+- **Injecting Adapters:** The MLX script injects small, trainable rank-decomposition matrices into **16 layers** of the model's transformer architecture.
 - **Hardware Efficiency:** Because we are only calculating gradients for these tiny adapter layers rather than the full model, peak memory usage stays at just **4.85 GB**, allowing it to train natively on an Apple Silicon Mac.
 - **Hyperparameters:** The model trains with a batch size of 8 for 1,000 iterations using a deliberately low learning rate of `1e-5` to preserve base intelligence.
 
