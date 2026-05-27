@@ -5,7 +5,7 @@ An end-to-end Big Data pipeline and Applied AI project that ingests real-time fi
 
 ---
 
-## The Problem & Vision
+## The Problem and proposed Solution
 
 Financial markets move fast, and they speak their own language. Standard, general-purpose LLMs often struggle with complex financial jargon and sarcasm — for example:
 
