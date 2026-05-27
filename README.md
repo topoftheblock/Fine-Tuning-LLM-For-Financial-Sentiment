@@ -15,7 +15,7 @@ Using massive, closed-source models (like GPT-4o) via API to process millions of
 
 **The Solution: Teacher-Student Knowledge Distillation**
 
-A large "Teacher" model (`gpt-4o-mini`) generates a high-quality, perfectly formatted dataset of financial reasoning. Apple's **MLX** framework is then used to fine-tune a small, blazingly fast "Student" model (**Qwen-2.5 0.5B Instruct**) on an M-series Mac.
+A large "Teacher" model (`gpt-4o-mini`) generates a high-quality, perfectly formatted dataset of financial reasoning. Apple's **MLX** framework is then used to fine-tune a small, fast "Student" model (**Qwen-2.5 0.5B Instruct**) on an M-series Mac.
 
 The result is a **local, highly specialized financial AI** that integrates directly into an Apache Kafka and PySpark pipeline — outputting deterministic JSON trading signals at zero recurring API cost.
 
@@ -63,7 +63,7 @@ Social Media Posts
 
 ---
 
-## Model Training & Fine-Tuning
+## Model Training and Fine-Tuning
 
 To optimize for local edge-device inference with zero recurring API costs, this project uses the highly efficient **Qwen-2.5 0.5B Instruct** model. It is fine-tuned locally using Apple's MLX framework, leveraging the Unified Memory architecture of the Apple M-Series chips.
 
@@ -77,7 +77,7 @@ Because a 500-million parameter base model lacks deep pre-trained knowledge of W
 - **The Result:** This process generates a synthetic dataset of 500 training examples (`train.jsonl`) and 100 unseen validation examples (`valid.jsonl`). We are effectively transferring the reasoning capabilities and JSON-compliance of a massive, closed-source model into our tiny, local model.
 - **Token Packing:** To maximize MLX training efficiency, `pack_dataset.py` groups multiple ChatML conversations into dense 2,048-token blocks, preventing wasted compute on padding tokens.
 
-### 2. LoRA (Low-Rank Adaptation) Fine-Tuning
+### 2. Low-Rank Adaptation Fine-Tuning
 
 Updating all 500 million parameters of the base model would require massive VRAM and could cause "catastrophic forgetting" (where the model forgets its baseline English comprehension). Instead, we use **LoRA** via the `mlx_lm` library (`llm_finetuning/train_mlx.sh`). Here is how LoRA is applied in this pipeline:
 
