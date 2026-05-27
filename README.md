@@ -103,7 +103,7 @@ Updating all 500 million parameters of the base model would require massive VRAM
 
 ### 3. Checkpoint Fusion & Overfitting Prevention
 
-During the 1,000-iteration training run, training loss drops steadily to **0.087**. However, because our synthetic dataset is only 500 rows, Weights & Biases (W&B) validation monitoring reveals that **peak generalization on unseen data occurs at Iteration 200** (Validation Loss: **1.243**). After Iteration 200, the validation loss slowly rises — a clear indicator that the model is overfitting and memorizing the training data instead of learning transferable financial concepts.
+During the 1,000-iteration training run, training loss drops steadily to **0.087**. However, because our synthetic dataset is only 500 rows, Weights and Biases validation monitoring reveals that **peak generalization on unseen data occurs at Iteration 200** (Validation Loss: **1.243**). After Iteration 200, the validation loss slowly rises — a clear indicator that the model is overfitting and memorizing the training data instead of learning transferable financial concepts.
 
 **The Solution (`llm_finetuning/fuse_model.sh`):** Rather than using the overfitted Iteration 1,000 weights, the pipeline selects the adapters generated at the **Iteration 200 checkpoint**. The fusion script mathematically matrix-multiplies these specific LoRA adapters directly back into the base Qwen weights. This results in a single, standalone executable model (`./inference/fused-qwen-finance`) that is permanently specialized for financial JSON extraction and ready to be served by the FastAPI engine at sub-100ms latency.
 
@@ -232,7 +232,7 @@ Open Kibana at **http://localhost:5601** and create an index pattern for `financ
 
 ## Evaluation & Hard Negatives
 
-To prevent the model from failing on tricky financial language (e.g., *"Inflation cooled, which is bullish"*), the project includes a `mine_hard_negatives.py` script that:
+To prevent the model from failing on tricky financial language, the project includes a `mine_hard_negatives.py` script that:
 
 1. Tests the model against the validation set
 2. Catches explicit failures and JSON-formatting breaks
